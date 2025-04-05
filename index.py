@@ -1,3 +1,6 @@
+import logging
+from logging import StreamHandler
+import sys
 import botpy
 import asyncio
 import os
@@ -5,9 +8,9 @@ import time
 import threading
 import random
 import re
+import copy
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-# 该依赖为账号配置文件
 from config.main import account_config
 from botpy.types.message import Ark, ArkKv
 from botpy.types.message import MarkdownPayload, MessageMarkdownParams
@@ -15,7 +18,50 @@ from botpy.message import GroupMessage, Message, DirectMessage
 from botpy.types.message import Message, Embed
 from botpy.message import C2CMessage
 
-# ANSI颜色代码
+# ====================== 动态随机颜色日志 ======================
+class DynamicColorFormatter(logging.Formatter):
+    # 可选的 ANSI 颜色（加粗 + 不同颜色）
+    COLORS = [
+        "\033[1;32m",  # 亮绿
+        "\033[1;33m",  # 亮黄
+        "\033[1;34m",  # 亮蓝
+        "\033[1;35m",  # 亮紫
+        "\033[1;36m",  # 亮青
+        "\033[1;92m",  # 亮浅绿
+        "\033[1;93m",  # 亮浅黄
+        "\033[1;94m",  # 亮浅蓝
+        "\033[1;95m",  # 亮浅紫
+        "\033[1;96m",  # 亮浅青
+    ]
+    RESET = "\033[0m"
+
+    def format(self, record):
+        # 随机选择一个颜色
+        color = random.choice(self.COLORS)
+        message = super().format(record)
+        return f"{color}{message}{self.RESET}"
+
+def setup_dynamic_logging():
+    # 获取根日志记录器
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    # 清除所有现有处理器
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # 添加动态颜色处理器
+    console = StreamHandler(sys.stdout)
+    console.setFormatter(DynamicColorFormatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    ))
+    logger.addHandler(console)
+
+# 初始化日志系统
+setup_dynamic_logging()
+
+# ====================== ANSI 颜色代码 ======================
 class Colors:
     HEADER = '\033[95m'
     BLUE = '\033[94m'
@@ -27,8 +73,9 @@ class Colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
     MAGENTA = '\033[35m'
-    
-print(f"{Colors.MAGENTA}正在装载词库…{Colors.END}")
+    BG_RED = '\033[41m'
+    BG_YELLOW = '\033[43m'
+    BG_BLUE = '\033[44m'
 
 # ====================== 词库引擎核心 ======================
 class ParallelWordLibrary:
@@ -63,22 +110,22 @@ class ParallelWordLibrary:
                 files = [
                     os.path.join(self.dir_path, f)
                     for f in os.listdir(self.dir_path)
-                    if f.endswith(".txt")
+                    if f.endswith(".liq")
                 ]
                 futures = {executor.submit(load_file, f): f for f in files}
                 for future in futures:
                     file_path = futures[future]
                     try:
                         lib, load_time = future.result()
-                        print(f"{Colors.YELLOW}🔄 {Colors.BOLD}[{os.path.basename(file_path)}]"
+                        print(f"{Colors.YELLOW}[{os.path.basename(file_path)}]"
                               f"{Colors.END} {Colors.GREEN}装载完成{Colors.END} | "
                               f"指令数: {len(lib.qa_pairs)} | "
                               f"耗时: {load_time:.3f}s")
                     except Exception as e:
-                        print(f"{Colors.RED}⚠️ 装载失败 [{os.path.basename(file_path)}]: {e}{Colors.END}")
+                        print(f"{Colors.RED}装载失败 [{os.path.basename(file_path)}]: {e}{Colors.END}")
 
         except FileNotFoundError:
-            print(f"{Colors.RED}⚠️ 目录不存在: {self.dir_path}{Colors.END}")
+            print(f"{Colors.RED}目录不存在: {self.dir_path}{Colors.END}")
 
     def _global_monitor(self):
         """监控新增和删除的文件"""
@@ -90,17 +137,17 @@ class ParallelWordLibrary:
                     current_files = {
                         os.path.join(self.dir_path, f)
                         for f in os.listdir(self.dir_path)
-                        if f.endswith(".txt")
+                        if f.endswith(".liq")
                     }
                 except FileNotFoundError:
-                    print(f"{Colors.RED}⚠️ 监控目录被删除: {self.dir_path}{Colors.END}")
+                    print(f"{Colors.RED}监控目录被删除: {self.dir_path}{Colors.END}")
                     time.sleep(self.check_interval)
                     continue
 
                 # 检查新增文件
                 new_files = current_files - set(self._libraries.keys())
                 if new_files:
-                    print(f"{Colors.CYAN}🆕 发现新词库: {', '.join(os.path.basename(f) for f in new_files)}{Colors.END}")
+                    print(f"{Colors.CYAN}发现新词库: {', '.join(os.path.basename(f) for f in new_files)}{Colors.END}")
                     self._start_parallel_load()
 
                 # 检查被删除的文件
@@ -108,14 +155,14 @@ class ParallelWordLibrary:
                     deleted_files = set(self._libraries.keys()) - current_files
                     if deleted_files:
                         for file_path in deleted_files:
-                            print(f"{Colors.MAGENTA}🗑️ 词库被删除: {os.path.basename(file_path)}{Colors.END}")
+                            print(f"{Colors.MAGENTA}词库被删除: {os.path.basename(file_path)}{Colors.END}")
                             self._libraries[file_path].close()
                             del self._libraries[file_path]
 
                 time.sleep(self.check_interval)
             except Exception as e:
-                print(f"{Colors.RED}⚠️ 监控异常: {e}{Colors.END}")
-                time.sleep(5)  # 发生异常时等待更长时间
+                print(f"{Colors.RED}监控异常: {e}{Colors.END}")
+                time.sleep(5)
 
     def find_command(self, command):
         """并行查询所有词库，每个文件只返回第一个匹配结果"""
@@ -146,7 +193,7 @@ class ParallelWordLibrary:
                     if result := future.result():
                         results.append(result)
                 except Exception as e:
-                    print(f"{Colors.RED}⚠️ 查询异常: {e}{Colors.END}")
+                    print(f"{Colors.RED}查询异常: {e}{Colors.END}")
         
         total_cost = (time.time() - start_time) * 1000
         return results, total_cost
@@ -160,7 +207,7 @@ class QALibrary:
     """问答词库管理"""
     def __init__(self, file_path):
         self.file_path = file_path
-        self.qa_pairs = []  # 保持顺序的问答对列表
+        self.qa_pairs = []
         self._lock = threading.Lock()
         self._last_modified = 0
         self._running = True
@@ -177,7 +224,6 @@ class QALibrary:
         for line in content.splitlines():
             line = line.strip()
             if not line:
-                # 保存当前指令的回复
                 if current_command and current_reply:
                     reply = ''.join(current_reply)
                     qa_pairs.append({
@@ -191,7 +237,6 @@ class QALibrary:
                 continue
             
             if not current_command:
-                # 处理指令行
                 commands = [cmd.strip() for cmd in line.split('|') if cmd.strip()]
                 if commands:
                     current_command = {
@@ -199,13 +244,11 @@ class QALibrary:
                         'line': line_num
                     }
             else:
-                # 处理回复行
                 processed_line = line.replace('\\n', '\n')
                 current_reply.append(processed_line)
             
             line_num += 1
         
-        # 保存最后一个指令的回复
         if current_command and current_reply:
             reply = ''.join(current_reply)
             qa_pairs.append({
@@ -227,10 +270,10 @@ class QALibrary:
                 self._last_modified = os.path.getmtime(self.file_path)
                 
         except FileNotFoundError:
-            print(f"{Colors.RED}⚠️ 词库被删除: {os.path.basename(self.file_path)}{Colors.END}")
+            print(f"{Colors.RED}词库被删除: {os.path.basename(self.file_path)}{Colors.END}")
             self.close()
         except Exception as e:
-            print(f"{Colors.RED}⚠️ 加载失败 [{os.path.basename(self.file_path)}]: {e}{Colors.END}")
+            print(f"{Colors.RED}加载失败 [{os.path.basename(self.file_path)}]: {e}{Colors.END}")
 
     def _start_monitor(self):
         """启动文件监控"""
@@ -239,16 +282,16 @@ class QALibrary:
                 try:
                     current_mtime = os.path.getmtime(self.file_path)
                     if current_mtime > self._last_modified:
-                        print(f"{Colors.YELLOW}🔄 {Colors.BOLD}[{os.path.basename(self.file_path)}]"
+                        print(f"{Colors.YELLOW}[{os.path.basename(self.file_path)}]"
                               f"{Colors.END} {Colors.CYAN}热更新中...{Colors.END}")
                         self._load_data()
                     time.sleep(1)
                 except FileNotFoundError:
-                    print(f"{Colors.RED}⚠️ 词库被删除: {os.path.basename(self.file_path)}{Colors.END}")
+                    print(f"{Colors.RED}词库被删除: {os.path.basename(self.file_path)}{Colors.END}")
                     self.close()
                     break
                 except Exception as e:
-                    print(f"{Colors.RED}⚠️ 监控异常 [{os.path.basename(self.file_path)}]: {e}{Colors.END}")
+                    print(f"{Colors.RED}监控异常 [{os.path.basename(self.file_path)}]: {e}{Colors.END}")
                     time.sleep(5)
 
         threading.Thread(
@@ -271,11 +314,74 @@ class QALibrary:
     def close(self):
         self._running = False
 
-def process_reply(reply, cost, line):
+async def process_reply(reply, cost, line, message, member_openid, group_openid, self, message_type):
+    """处理回复中的函数"""
+    if re.findall("\$复制 (.*?) (.*?)\$", reply):
+        # 使用正则表达式匹配
+        pattern = r'\$复制 (.*?) (.*?)\$'
+        matches = re.findall(pattern, reply)
+        for match in matches:
+            if not match[1].isdigit():
+                pass
+            else:
+                blank = ""
+                for i in range(0,int(match[1])):
+                    blank = f"{blank}{match[0]}"
+                reply = reply.replace(f"$复制 {match[0]} {match[1]}$", blank)
+                
+    if re.findall("\$回调 (.*?)\$", reply):
+        # 使用正则表达式匹配
+        pattern = r'\$回调 (.*?)\$'
+        matches = re.findall(pattern, reply)
+        for match in matches:
+            message.content = '[内部]' + str(match)
+            call_back = True
+            call_back_answer = await message_dealwith(self, message, message_type, call_back)
+            if call_back_answer == None:
+                call_back_answer = ''
+            reply = reply.replace(f"$回调 {match}$", call_back_answer)
+            
+    if re.findall(r"\$调用 (.*?) (.*?)\$", reply):
+        pattern = r'\$调用 (.*?) (.*?)\$'
+        matches = re.findall(pattern, reply)
+        for match in matches:
+            reply = reply.replace(f"$调用 {match[0]} {match[1]}$", "")
+            try:
+                delay_seconds = int(match[0])
+                delayed_content = str(match[1])
+                
+                async def delayed_task():
+                    await asyncio.sleep(delay_seconds)
+                    # 直接修改原消息内容（临时方案）
+                    original_content = message.content
+                    try:
+                        message.content = delayed_content
+                        await message_dealwith(self, message, message_type, call_back=False)
+                    finally:
+                        message.content = original_content  # 恢复原内容
+                
+                asyncio.create_task(delayed_task())
+            except ValueError:
+                pass
+                
+    if re.findall("\$调用 (.*?)\$", reply):
+        # 使用正则表达式匹配
+        pattern = r'\$调用 (.*?)\$'
+        matches = re.findall(pattern, reply)
+        for match in matches:
+            reply = reply.replace(f"$调用 {match}$", '')
+            message.content = str(match)
+            call_back = False
+            asyncio.create_task(message_dealwith(self, message, message_type, call_back))
+    
     """处理回复中的变量"""
     variables = {
         '%匹配耗时%': f"{cost:.2f}",
         '%当前行%': str(line),
+        '%QQ%': member_openid,
+        '%id%': member_openid,
+        '%群号%': group_openid,
+        '%空格%': ' '
     }
     
     for var, val in variables.items():
@@ -297,8 +403,6 @@ async def answer_dealwith(self, answer_msg, answer_type, message_type, message, 
             )
         elif answer_type == "music":
             uploadMedia = await message._api.post_group_file(group_openid=message.group_openid, file_type=3, url=answer_msg)
-        
-            # 资源上传后，会得到Media，用于发送消息
             await message._api.post_group_message(group_openid=message.group_openid,msg_type=7, msg_id=message.id, msg_seq=number_seq,media=uploadMedia)
 
     elif message_type == "friend":
@@ -316,10 +420,9 @@ async def answer_dealwith(self, answer_msg, answer_type, message_type, message, 
                 file_type=1,
                 url=answer_msg
             )
-            # 资源上传后，会得到Media，用于发送消息
             await message._api.post_c2c_message(
                 openid=message.author.user_openid,
-                msg_type=7,  # 7表示富媒体类型
+                msg_type=7,
                 msg_id=message.id,
                 msg_seq=number_seq,
                 media=uploadMedia
@@ -338,88 +441,109 @@ async def answer_dealwith(self, answer_msg, answer_type, message_type, message, 
             )
 
 # ====================== 消息处理 ======================
-async def message_dealwith(self, message, message_type):
-    print(f"{Colors.GREEN}接收消息: {message.content}{Colors.END}")
+async def message_dealwith(self, message, message_type, call_back):
+    message_type_list = {
+        'group': '群组',
+        'channel': '频道',
+        'friend': '好友',
+        'channel_friend': '频道私信'
+    }
+    print(f"{Colors.GREEN}接收到{message_type_list[message_type]}消息: {message.content}{Colors.END}")
     
     if message.content == None:
         message.content = ""
 
-    # 回复类型初始化
     answer_type = "string"
     
-    # 用户id获取
     if message_type == "group":
         member_openid = message.author.member_openid
+        group_openid = message.group_openid
     elif message_type == "friend":
         member_openid = message.author.user_openid
+        group_openid = message.author.user_openid
     elif message_type == "channel":
         member_openid = message.author.id
-        # 定义正则表达式
+        group_openid = message.author.id
         pattern = r"<@!(\d+)>"
-        # 提取Bot ID
         match = re.search(pattern, message.content)
         if match:
             bot_id = match.group(1)
         message.content = message.content.replace(f"<@!{bot_id}>", "")
     elif message_type == "channel_friend":
         member_openid = message.author.id
+        group_openid = message.author.id
         
-    # 从消息内容中提取命令
     cmd = message.content.strip()
     
-    # 查询词库
     results, total_cost = library.find_command(cmd)
     
     if not results:
         return
     
     for result in results:
-        processed_reply = process_reply(
+        processed_reply = await process_reply(
             result['reply'],
             result['cost'],
-            result['line']
+            result['line'],
+            message,
+            member_openid,
+            group_openid,
+            self, 
+            message_type
         )
-        answer_msg = processed_reply
-        await answer_dealwith(self, answer_msg, answer_type, message_type, message, member_openid)
-        print(f"{Colors.GREEN}回复消息: {answer_msg}{Colors.END}")
+        if call_back == False:
+            answer_msg = processed_reply
+            await answer_dealwith(self, answer_msg, answer_type, message_type, message, member_openid)
+            print(f"{Colors.GREEN}回复消息: {answer_msg}{Colors.END}")
+        else:
+            return processed_reply
         
-    print(f"{Colors.MAGENTA}⏱️ 总匹配耗时: {total_cost:.2f}ms{Colors.END}")
+    print(f"{Colors.MAGENTA}总匹配耗时: {total_cost:.2f}ms{Colors.END}")
 
 # ====================== 主程序 ======================
-# 全局词库实例
-library = ParallelWordLibrary()
-
 class MyClient(botpy.Client):
-    # 群聊
     async def on_group_at_message_create(self, message: GroupMessage):
-        message_type = "group"
-        asyncio.create_task(message_dealwith(self, message, message_type))
+        if '[内部]' in message.content:
+            pass
+        else:
+            message_type = "group"
+            call_back = False
+            await message_dealwith(self, message, message_type, call_back)
 
-    # 消息列表
     async def on_c2c_message_create(self, message: C2CMessage):
-        message_type = "friend"
-        asyncio.create_task(message_dealwith(self, message, message_type))
+        if '[内部]' in message.content:
+            pass
+        else:
+            message_type = "friend"
+            call_back = False
+            await message_dealwith(self, message, message_type, call_back)
 
-    # 频道
     async def on_at_message_create(self, message: Message):
-        message_type = "channel"
-        asyncio.create_task(message_dealwith(self, message, message_type))
+        if '[内部]' in message.content:
+            pass
+        else:
+            message_type = "channel"
+            call_back = False
+            await message_dealwith(self, message, message_type, call_back)
 
-    # 频道私信
     async def on_direct_message_create(self, message: DirectMessage):
-        message_type = "channel_friend"
-        asyncio.create_task(message_dealwith(self, message, message_type))
+        if '[内部]' in message.content:
+            pass
+        else:
+            message_type = "channel_friend"
+            call_back = False
+            await message_dealwith(self, message, message_type, call_back)
         
-# 设置需要监听的事件
-intents = botpy.Intents(public_messages=True, public_guild_messages=True)
-
-# 创建客户端实例
-client = MyClient(intents=intents)
-"""启用沙箱
-client = MyClient(
-    intents=intents,
-    is_sandbox=True
-)
-"""
-
-client.run(appid=account_config()[0], secret=account_config()[1])
+if __name__ == "__main__":
+    import Main
+else:
+    print(f"{Colors.MAGENTA}正在装载词库...{Colors.END}")
+    library = ParallelWordLibrary()
+    intents = botpy.Intents.default()
+    sandbox_type = False
+    # 如果沙箱模式已开启
+    if account_config()[2] == 1:
+        sandbox_type = True
+        print(f"{Colors.YELLOW}沙箱模式已开启{Colors.END}")
+    client = MyClient(intents=intents, is_sandbox=sandbox_type)
+    client.run(appid=account_config()[0], secret=account_config()[1])
