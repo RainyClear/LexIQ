@@ -99,16 +99,15 @@ def ensure_dependencies():
             print(f"{Colors.YELLOW}⚠ 需要安装/更新: {Colors.CYAN}{package}>={min_version} {Colors.WHITE}({str(e)}){Colors.RESET}")
             install_package(package, min_version)
 
-if __name__ == "__main__":
-    try:
-        ensure_dependencies()
-        print(f"\n{Colors.GREEN}{Colors.BOLD}✨ 所有依赖已就绪，程序开始运行！{Colors.RESET}\n")
-        # 开始运行
-        import index
-        index.main()
-    except KeyboardInterrupt:
-        print(f"\n{Colors.RED}⏹ 用户中断，程序退出。{Colors.RESET}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n{Colors.RED}❌ 发生错误: {e}{Colors.RESET}")
-        sys.exit(1)
+try:
+    ensure_dependencies()
+    print(f"\n{Colors.GREEN}{Colors.BOLD}✨ 所有依赖已就绪，程序开始运行！{Colors.RESET}\n")
+    # 开始运行
+    import index
+    index.main()
+except KeyboardInterrupt:
+    print(f"\n{Colors.RED}⏹ 用户中断，程序退出。{Colors.RESET}")
+    sys.exit(1)
+except Exception as e:
+    print(f"\n{Colors.RED}❌ 发生错误: {e}{Colors.RESET}")
+    sys.exit(1)
