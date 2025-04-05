@@ -1,6 +1,10 @@
 def account_config():
     # 机器人配置
-    appid = "机器人的Appid"
-    secret = "机器人的Appsecret"
+    # 机器人Appid
+    appid = " "
+    # 机器人Secret
+    secret = " "
+    # 沙箱模式(1为开启，其他的为关闭)
+    sandbox = 0
     
-    return appid, secret
+    return appid, secret, sandbox
