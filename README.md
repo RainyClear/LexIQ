@@ -1,7 +1,7 @@
 ![LexIQ Logo](https://raw.githubusercontent.com/RainyClear/LexIQ/main/logo.png)
 
 #### LexIQ
-### QQ官方机器人Python - WebSocket
+### QQ官方机器人 - Python - WebSocket
 
 > config/main.py中编写机器人信息
 
