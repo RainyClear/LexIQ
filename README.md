@@ -1,3 +1,5 @@
+![LexIQ Logo](https://raw.githubusercontent.com/RainyClear/LexIQ/main/logo.png)
+
 #### LexIQ
 ### QQ官方机器人Python - WebSocket
 
@@ -7,4 +9,4 @@
 > 在words文件里编写txt词库文件
 
 ***
-QQ交流群:[333424695])
+QQ交流群:[333424695]
