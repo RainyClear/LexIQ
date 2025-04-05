@@ -1,4 +1,4 @@
-![LexIQ Logo](https://bot.aary.top/LexIQ/logo.png)
+![LexIQ Logo](https://raw.githubusercontent.com/RainyClear/LexIQ/main/logo.png)
 
 #### LexIQ
 ### QQ官方机器人Python - WebSocket
