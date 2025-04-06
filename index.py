@@ -341,38 +341,29 @@ async def process_reply(reply, cost, line, message, member_openid, group_openid,
                 call_back_answer = ''
             reply = reply.replace(f"$回调 {match}$", call_back_answer)
             
-    if re.findall(r"\$调用 (.*?) (.*?)\$", reply):
-        pattern = r'\$调用 (.*?) (.*?)\$'
-        matches = re.findall(pattern, reply)
+    if re.findall(r"\$调用", reply):
+        # 处理所有调用格式（延迟和即时）
+        matches = re.findall(r'\$调用 (?:(\d+) )?(.*?)\$', reply)
+        
         for match in matches:
-            reply = reply.replace(f"$调用 {match[0]} {match[1]}$", "")
-            try:
-                delay_seconds = int(match[0])
-                delayed_content = str(match[1])
-                
-                async def delayed_task():
-                    await asyncio.sleep(delay_seconds)
-                    # 直接修改原消息内容（临时方案）
+            delay_str, content = match
+            reply = reply.replace(f"$调用 {delay_str+' ' if delay_str else ''}{content}$", "")
+            
+            async def execute_call(msg_content=content, delay=delay_str):
+                try:
+                    if delay:
+                        await asyncio.sleep(int(delay))
+                    # 创建安全的上下文环境
                     original_content = message.content
                     try:
-                        message.content = delayed_content
-                        await message_dealwith(self, message, message_type, call_back=False)
+                        message.content = msg_content
+                        await message_dealwith(self, message, message_type, False)
                     finally:
-                        message.content = original_content  # 恢复原内容
-                
-                asyncio.create_task(delayed_task())
-            except ValueError:
-                pass
-                
-    if re.findall("\$调用 (.*?)\$", reply):
-        # 使用正则表达式匹配
-        pattern = r'\$调用 (.*?)\$'
-        matches = re.findall(pattern, reply)
-        for match in matches:
-            reply = reply.replace(f"$调用 {match}$", '')
-            message.content = str(match)
-            call_back = False
-            asyncio.create_task(message_dealwith(self, message, message_type, call_back))
+                        message.content = original_content
+                except Exception as e:
+                    print(f"{Colors.RED}调用执行失败: {e}{Colors.END}")
+            
+            asyncio.create_task(execute_call())
     
     """处理回复中的变量"""
     variables = {
@@ -381,6 +372,7 @@ async def process_reply(reply, cost, line, message, member_openid, group_openid,
         '%QQ%': member_openid,
         '%id%': member_openid,
         '%群号%': group_openid,
+        '%groupid%': group_openid,
         '%空格%': ' '
     }
     
